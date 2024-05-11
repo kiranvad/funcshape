@@ -12,6 +12,7 @@ class SineSeries(CurveLayer):
         self.weights = torch.nn.Parameter(
             init_scale * torch.randn(N, 1, requires_grad=True)
         )
+        self.weights = torch.nn.init.xavier_uniform_(self.weights)
         self.p = p
         self.project()
 

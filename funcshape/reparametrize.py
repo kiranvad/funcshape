@@ -11,7 +11,7 @@ def reparametrize(
 
     if isinstance(optimizer, torch.optim.LBFGS):
         return reparametrize_lbfgs(
-            network, loss, optimizer, logger, scheduler, projection_kwargs
+            network, loss, optimizer, iterations, logger, scheduler, projection_kwargs
         )
 
     # Evaluate initial error
@@ -43,13 +43,10 @@ def reparametrize(
 
 
 def reparametrize_lbfgs(
-    network, loss, optimizer, logger, scheduler=None, projection_kwargs=None
+    network, loss, optimizer, iterations, logger, scheduler=None, projection_kwargs=None
 ):
     if projection_kwargs is None:
         projection_kwargs = {}
-
-    # Get max iterations from optimizer
-    iterations = optimizer.defaults["max_eval"]
 
     # Evaluate initial error
     logger.start()
@@ -83,7 +80,7 @@ def reparametrize_lbfgs(
 
         # Update learning rate scheduler
         if scheduler is not None:
-            scheduler.step(l)
+            scheduler.step()
 
         return l
 
