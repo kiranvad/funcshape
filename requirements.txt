@@ -1,0 +1,6 @@
+numpy
+matplotlib
+torch
+cycler
+scikit-learn
+scipy
