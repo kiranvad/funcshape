@@ -4,3 +4,4 @@ torch
 cycler
 scikit-learn
 scipy
+git+https://github.com/patrick-kidger/torchcubicspline.git

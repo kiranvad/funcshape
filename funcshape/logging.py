@@ -11,8 +11,8 @@ class Logger:
 
     def stop(self):
         self.toc = time.time()
-        print()
-        print(f"Finished training in {self.toc - self.tic:.5f}s")
+        if self.interval>0:
+            print(f"Finished training in {self.toc - self.tic:.5f}s")
 
     def log(self, *, it, value, **kwargs):
         if self.interval > 0 and it % self.interval == 0:
