@@ -68,9 +68,15 @@ class SRSF:
     
 
 class FunctionDistance(ShapeDistanceBase):
+    def __init__(self, q, r, k, h=1e-3, sample_type="linear"):
+        self.sample_type = sample_type
+        super().__init__(q, r, k, h=1e-3)
     def create_point_collection(self, k):
-        return col_linspace(0, 1, k)
-
+        if self.sample_type=="linear":
+            return torch.linspace(0, 1, k).unsqueeze(-1)
+        elif self.sample_type=="log":
+            return torch.logspace(start=-10, end=0, steps=k).unsqueeze(-1)
+            
     def get_determinant(self, network):
         return network.derivative(self.X, self.h)
 
@@ -81,16 +87,38 @@ class FunctionDistance(ShapeDistanceBase):
         return l2_norm
     
 def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function, CurveReparametrizer , np.ndarray]:
+    """Obtain warping function between two functions
+
+    Arguments:
+        f1 -- funcshape.functions.Function
+        f2 -- funcshape.functions.Function
+
+    Optional:
+        n_domain -- number of samples to use in the domain
+        domain_type -- type of sampling to use (either "linear" or "log")
+        n_restarts -- number of optimization restarts
+        n_basis -- number of basis functions to represent the warping manifold tangent space
+        n_layers -- number of neural network layers to approximate warping function
+        n_iters -- number of optimization iterations
+        eps -- threshold for early stopping of optimization
+
+    Returns:
+        Tuple of 
+            Function -- warped function
+            Network -- Optimal network
+            error -- best error trace from several restarts
+    """
     q1, q2 = SRSF(f1), SRSF(f2)
     # Define loss, optimizer and run reparametrization.
     n_domain = kwargs.get("n_domain", 1024)
-    loss_func = FunctionDistance(q1, q2, k=n_domain)
+    domain_type = kwargs.get("domain_type", "linear")
+    loss_func = FunctionDistance(q1, q2, k=n_domain, sample_type=domain_type)
 
     best_error_value = np.inf
     for _ in range(kwargs.get("n_restarts", 10)):
         # Create reparametrization network
         RN = CurveReparametrizer([
-            SineSeries(kwargs.get("n_basis", 20)) for i in range(kwargs.get("n_basis", 10))
+            SineSeries(kwargs.get("n_basis", 20)) for _ in range(kwargs.get("n_layers", 10))
         ])
 
         optimizer = optim.Adam(RN.parameters(), lr=kwargs.get("lr", 3e-4))
@@ -106,9 +134,9 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
             break
 
     # Get plot data to visualize diffeomorphism
-    best_RN.detach()
-    x = col_linspace(0, 1, n_domain)
-    y = best_RN(x)
-    print(x.shape, y.shape)
+    with torch.no_grad():
+        best_RN.detach()
+        x = loss_func.create_point_collection(k=n_domain)
+        y = best_RN(x)
 
     return Function(x.squeeze(), y), best_RN, best_error
