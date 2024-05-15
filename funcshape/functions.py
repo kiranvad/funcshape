@@ -6,10 +6,12 @@ from funcshape.networks import CurveReparametrizer
 from funcshape.layers.sineseries import SineSeries
 from funcshape.logging import Logger
 from funcshape.reparametrize import reparametrize
-from funcshape.utils import col_linspace
 from torchcubicspline import natural_cubic_spline_coeffs, NaturalCubicSpline
 from funcshape.loss import ShapeDistanceBase 
+from funcshape.layers.layerbase import CurveLayer
 
+from abc import abstractmethod 
+from math import pi, sqrt
 from typing import Tuple
 
 class Function:
@@ -85,7 +87,69 @@ class FunctionDistance(ShapeDistanceBase):
         l2_norm = torch.trapezoid(error.squeeze(), x=self.X.squeeze())
         
         return l2_norm
+
+class FunctionsBaseMetric(CurveLayer):
+    def __init__(self, N):
+        super().__init__()
+        self.N = N
+        self.nvec = torch.arange(1, N + 1, dtype=torch.float)
+        self.weights = torch.nn.Parameter(torch.randn(N, 1, requires_grad=True))
+        self.weights = torch.nn.init.xavier_uniform_(self.weights)
+
+    @abstractmethod
+    def forward(self, x):
+        pass 
+
+    @abstractmethod
+    def derivative(self, x, h=None):
+        pass
+
+    def project(self, eps=1e-6):
+        with torch.no_grad():
+            scale = (self.Ln*torch.abs(self.weights)).sum()
+            if scale > 1.0 - eps:
+                self.weights *= (1 - eps) / scale
+
+    def to(self, device):
+        self.nvec = self.nvec.to(device)
+        return self
+
+class L2Metric(FunctionsBaseMetric):
+    def __init__(self, N):
+        super().__init__(N)
+        self.Ln = (pi/sqrt(2.0))*self.nvec
+        self.project()
+
+    def forward(self, x):
+        term = torch.sin(pi * self.nvec * x)
+        scale = (1/sqrt(2.0))
+        return x + (term * scale) @ self.weights 
+
+    def derivative(self, x, h=None):
+        term = torch.cos(pi * self.nvec * x)
+        scale = (pi*self.nvec)/sqrt(2.0)
+        return 1.0 + (term * scale) @ self.weights
     
+class PalaisMetric(FunctionsBaseMetric):
+    def __init__(self, N):
+        super().__init__(N)
+        self.weights = torch.nn.Parameter(torch.randn(2*N, 1, requires_grad=True))
+        self.weights = torch.nn.init.xavier_uniform_(self.weights)
+        self.Ln = sqrt(2.0)
+        self.project()
+
+    def forward(self, x):
+        t1 = (torch.sin(2.0 * pi * self.nvec * x)/(sqrt(2.0) * pi * self.nvec)) 
+        t2 = ((torch.cos(2.0 * pi * self.nvec * x)-1.0)/(sqrt(2.0) * pi * self.nvec)) 
+        return x + t1 @ self.weights[:self.N] + t2 @ self.weights[self.N:]
+
+    def derivative(self, x, h=None):
+        t1 = torch.cos(2.0 * pi * self.nvec * x)
+        t2 = (torch.sin(2.0 * pi * self.nvec * x)) 
+
+        return 1 + ((t1 @ self.weights[:self.N] - t2 @ self.weights[self.N:]) * sqrt(2.0)) 
+
+
 def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function, CurveReparametrizer , np.ndarray]:
     """Obtain warping function between two functions
 
@@ -116,10 +180,19 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
 
     best_error_value = np.inf
     for _ in range(kwargs.get("n_restarts", 10)):
+        basis_type = kwargs.get("basis_type", "sine")
+        n_basis = kwargs.get("n_basis", 20)
+        if basis_type=="sine":
+            basis = SineSeries(n_basis)
+        elif basis_type=="L2":
+            basis = L2Metric(n_basis)
+        elif basis_type=="palais":
+            basis = PalaisMetric(n_basis)
+        else:
+            raise RuntimeError("Basis type %s is not recognised. Should be one of [sine, L2, palais]"%basis_type)
+
         # Create reparametrization network
-        RN = CurveReparametrizer([
-            SineSeries(kwargs.get("n_basis", 20)) for _ in range(kwargs.get("n_layers", 10))
-        ])
+        RN = CurveReparametrizer([basis for _ in range(kwargs.get("n_layers", 10))])
 
         optimizer = optim.Adam(RN.parameters(), lr=kwargs.get("lr", 3e-4))
         error = reparametrize(RN, loss_func, optimizer, kwargs.get("n_iters", 100), Logger(0))
@@ -130,7 +203,7 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
             best_RN = RN
             print("Current best error : %2.4f"%best_error_value)
 
-        if best_error_value<kwargs.get("eps", 1e-3):
+        if best_error_value<kwargs.get("eps", 1e-2):
             break
 
     # Get plot data to visualize diffeomorphism
