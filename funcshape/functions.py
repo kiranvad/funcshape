@@ -60,13 +60,18 @@ class SRSF:
     """SRSF transformation of functions"""
 
     def __init__(self, f : Function)-> None:
-        self.f = f
-
-    def __call__(self, x, h=None):
-        grad = self.f.derivative(x)
-        q = grad / torch.sqrt(torch.abs(grad) + 1e-3)
+        self.function = f
+        grad = self.function.derivative(self.function.x)
+        self.x = self.function.x
+        self.qx = grad / torch.sqrt(torch.abs(grad) + 1e-3)
+        coeffs = natural_cubic_spline_coeffs(self.x, self.qx)
+        self.spline = NaturalCubicSpline(coeffs)
         
-        return q
+    def __call__(self, gamma, h=None):
+        gamma_x = (self.x[-1] - self.x[0]) * gamma + self.x[0]
+        q_gamma = self.spline.evaluate(gamma_x)
+        
+        return q_gamma
     
 
 class FunctionDistance(ShapeDistanceBase):
@@ -83,8 +88,10 @@ class FunctionDistance(ShapeDistanceBase):
         return network.derivative(self.X, self.h)
 
     def loss_func(self, U, Y):
-        error = ((self.Q.squeeze(-1) - torch.sqrt(U + 1e-8) * self.r(Y, self.h).squeeze(-1)) ** 2)
-        l2_norm = torch.trapezoid(error.squeeze(), x=self.X.squeeze())
+        r_phi = self.r(Y.squeeze()).squeeze()
+        phi_dot = torch.sqrt(U + 1e-8).squeeze()
+        error = ((self.Q.squeeze() - phi_dot * r_phi ) ** 2)
+        l2_norm = torch.trapezoid(error, x=self.X.squeeze())
         
         return l2_norm
 
@@ -194,7 +201,11 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
         # Create reparametrization network
         RN = CurveReparametrizer([basis for _ in range(kwargs.get("n_layers", 10))])
 
-        optimizer = optim.Adam(RN.parameters(), lr=kwargs.get("lr", 3e-4))
+        optimizer = optim.LBFGS(RN.parameters(), 
+                                lr=kwargs.get("lr", 3e-4), 
+                                max_iter=kwargs.get("n_iters", 100), 
+                                line_search_fn="strong_wolfe"
+                                )
         error = reparametrize(RN, loss_func, optimizer, kwargs.get("n_iters", 100), Logger(0))
 
         if error[-1]<best_error_value:
