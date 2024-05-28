@@ -34,20 +34,17 @@ class Function:
         return Function(self.x, y)
     
 def plot_function(f, npoints=201, dotpoints=None, ax=None, **kwargs):
-    x = torch.linspace(0, 1, npoints).squeeze()
-    fx = f(x).squeeze()
-
     if ax is None:
         fig, ax = plt.subplots()
 
-    ax.plot(x, fx, **kwargs)
+    ax.plot(f.x, f.fx, **kwargs)
 
     if dotpoints is not None:
-        x = torch.linspace(0, 1, dotpoints).squeeze()
-        fx = f(x).squeeze()
+        x_ = torch.linspace(f.x.min(), f.x.max(), dotpoints).squeeze()
+        fx_ = f(x_).squeeze()
         ax.plot(
-            x,
-            fx,
+            x_,
+            fx_,
             c=ax.lines[-1].get_color(),
             ls="none",
             marker="o",
