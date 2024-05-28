@@ -187,8 +187,8 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
 
     best_error_value = np.inf
     for _ in range(kwargs.get("n_restarts", 10)):
-        basis_type = kwargs.get("basis_type", "sine")
-        n_basis = kwargs.get("n_basis", 20)
+        basis_type = kwargs.get("basis_type", "palais")
+        n_basis = kwargs.get("n_basis", 10)
         if basis_type=="sine":
             basis = SineSeries(n_basis)
         elif basis_type=="L2":
