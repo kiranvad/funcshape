@@ -4,7 +4,7 @@ from funcshape.utils import numpy_nans
 
 
 def reparametrize(
-    network, loss, optimizer, iterations, logger, scheduler=None, projection_kwargs=None
+    network, loss, optimizer, iterations, logger, scheduler=None, projection_kwargs=None, retain_graph=False
 ):
     if projection_kwargs is None:
         projection_kwargs = {}

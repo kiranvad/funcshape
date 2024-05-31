@@ -203,13 +203,19 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
                                 max_iter=kwargs.get("n_iters", 100), 
                                 line_search_fn="strong_wolfe"
                                 )
-        error = reparametrize(RN, loss_func, optimizer, kwargs.get("n_iters", 100), Logger(0))
+        error = reparametrize(RN, 
+                              loss_func, 
+                              optimizer, 
+                              kwargs.get("n_iters", 100), 
+                              Logger(kwargs.get("verbose", 0))
+                              )
 
         if error[-1]<best_error_value:
             best_error = error
             best_error_value = best_error[-1]
             best_RN = RN
-            print("Current best error : %2.4f"%best_error_value)
+            if kwargs.get("verbose", 0)>1:
+                print("Current best error : %2.4f"%best_error_value)
 
         if best_error_value<kwargs.get("eps", 1e-2):
             break
