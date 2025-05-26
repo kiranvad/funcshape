@@ -207,7 +207,7 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
                               loss_func, 
                               optimizer, 
                               kwargs.get("n_iters", 100), 
-                              Logger(kwargs.get("verbose", 0))
+                              Logger(0)
                               )
 
         if error[-1]<best_error_value:
