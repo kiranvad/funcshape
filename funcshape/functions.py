@@ -79,7 +79,7 @@ class FunctionDistance(ShapeDistanceBase):
         if self.sample_type=="linear":
             return torch.linspace(0, 1, k).unsqueeze(-1)
         elif self.sample_type=="log":
-            return torch.logspace(start=-10, end=0, steps=k).unsqueeze(-1)
+            return torch.logspace(start=-3, end=0, steps=k).unsqueeze(-1)
             
     def get_determinant(self, network):
         return network.derivative(self.X, self.h)
@@ -98,7 +98,7 @@ class FunctionsBaseMetric(CurveLayer):
         self.N = N
         self.nvec = torch.arange(1, N + 1, dtype=torch.float)
         self.weights = torch.nn.Parameter(torch.randn(N, 1, requires_grad=True))
-        self.weights = torch.nn.init.xavier_uniform_(self.weights)
+        self.weights = torch.nn.init.constant_(self.weights, 0.0)
 
     @abstractmethod
     def forward(self, x):
@@ -138,7 +138,7 @@ class PalaisMetric(FunctionsBaseMetric):
     def __init__(self, N):
         super().__init__(N)
         self.weights = torch.nn.Parameter(torch.randn(2*N, 1, requires_grad=True))
-        self.weights = torch.nn.init.xavier_uniform_(self.weights)
+        self.weights = torch.nn.init.constant_(self.weights, 0.0)
         self.Ln = sqrt(2.0)
         self.project()
 
@@ -155,20 +155,27 @@ class PalaisMetric(FunctionsBaseMetric):
 
 
 def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function, CurveReparametrizer , np.ndarray]:
-    """Obtain warping function between two functions
+    """Obtain warping function between two functions.
+
+    This functions uses a gradient descent optimization to approximate the 
+    warping function starting from identity. 
+    In simple terms, we use a neural network to approximate the recurise nature of 
+    the warping function and adjust the weights of the network to indentify a 
+    function approximator that mininizes the amplitude distance between any two curves.
 
     Arguments:
         f1 -- funcshape.functions.Function
         f2 -- funcshape.functions.Function
 
     Optional:
-        n_domain -- number of samples to use in the domain
-        domain_type -- type of sampling to use (either "linear" or "log")
-        n_restarts -- number of optimization restarts
-        n_basis -- number of basis functions to represent the warping manifold tangent space
-        n_layers -- number of neural network layers to approximate warping function
-        n_iters -- number of optimization iterations
-        eps -- threshold for early stopping of optimization
+        n_domain -- number of samples to use in the domain (default, 100)
+        domain_type -- type of sampling to use (either "linear" (default) or "log")
+        n_restarts -- number of optimization restarts (depceitated)
+        n_basis -- number of basis functions to represent the warping manifold tangent space (default, 20)
+        n_layers -- number of neural network layers to approximate warping function (default, 15)
+        n_iters -- number of optimization iterations (default, 500)
+        eps -- threshold for early stopping of optimization (depceitated)
+        verbose -- wether to show error after warping computation (default, False)
 
     Returns:
         Tuple of 
@@ -177,53 +184,43 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
             error -- best error trace from several restarts
     """
     q1, q2 = SRSF(f1), SRSF(f2)
-    # Define loss, optimizer and run reparametrization.
-    n_domain = kwargs.get("n_domain", 1024)
+    n_domain = kwargs.get("n_domain", 100)
     domain_type = kwargs.get("domain_type", "linear")
     loss_func = FunctionDistance(q1, q2, k=n_domain, sample_type=domain_type)
 
-    best_error_value = np.inf
-    for _ in range(kwargs.get("n_restarts", 10)):
-        basis_type = kwargs.get("basis_type", "palais")
-        n_basis = kwargs.get("n_basis", 10)
-        if basis_type=="sine":
-            basis = SineSeries(n_basis)
-        elif basis_type=="L2":
-            basis = L2Metric(n_basis)
-        elif basis_type=="palais":
-            basis = PalaisMetric(n_basis)
-        else:
-            raise RuntimeError("Basis type %s is not recognised. Should be one of [sine, L2, palais]"%basis_type)
+    basis_type = kwargs.get("basis_type", "palais")
+    n_basis = kwargs.get("n_basis", 20)
+    if basis_type=="sine":
+        basis = SineSeries(n_basis)
+    elif basis_type=="L2":
+        basis = L2Metric(n_basis)
+    elif basis_type=="palais":
+        basis = PalaisMetric(n_basis)
+    else:
+        raise RuntimeError("Basis type %s is not recognised. Should be one of [sine, L2, palais]"%basis_type)
 
-        # Create reparametrization network
-        RN = CurveReparametrizer([basis for _ in range(kwargs.get("n_layers", 10))])
+    # Create reparametrization network
+    RN = CurveReparametrizer([basis for _ in range(kwargs.get("n_layers", 15))])
 
-        optimizer = optim.LBFGS(RN.parameters(), 
-                                lr=kwargs.get("lr", 3e-4), 
-                                max_iter=kwargs.get("n_iters", 100), 
-                                line_search_fn="strong_wolfe"
-                                )
-        error = reparametrize(RN, 
-                              loss_func, 
-                              optimizer, 
-                              kwargs.get("n_iters", 100), 
-                              Logger(0)
-                              )
+    optimizer = optim.LBFGS(RN.parameters(), 
+                            lr=kwargs.get("lr", 3e-4), 
+                            max_iter=kwargs.get("n_iters", 500), 
+                            line_search_fn="strong_wolfe"
+                        )
+    error = reparametrize(RN,
+                          loss_func,
+                          optimizer, 
+                          kwargs.get("n_iters", 500),
+                          Logger(0)
+                        )
 
-        if error[-1]<best_error_value:
-            best_error = error
-            best_error_value = best_error[-1]
-            best_RN = RN
-            if kwargs.get("verbose", 0)>1:
-                print("Current best error : %2.4f"%best_error_value)
-
-        if best_error_value<kwargs.get("eps", 1e-2):
-            break
+    if kwargs.get("verbose", False):
+        print("Current best error : %2.4f"%error[-1])
 
     # Get plot data to visualize diffeomorphism
     with torch.no_grad():
-        best_RN.detach()
+        RN.detach()
         x = loss_func.create_point_collection(k=n_domain)
-        y = best_RN(x)
+        xg = RN(x)
 
-    return Function(x.squeeze(), y), best_RN, best_error
+    return Function(x.squeeze(), xg), RN, error
