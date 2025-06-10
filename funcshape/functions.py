@@ -88,9 +88,9 @@ class FunctionDistance(ShapeDistanceBase):
         r_phi = self.r(Y.squeeze()).squeeze()
         phi_dot = torch.sqrt(U + 1e-8).squeeze()
         error = ((self.Q.squeeze() - phi_dot * r_phi ) ** 2)
-        l2_norm = torch.trapezoid(error, x=self.X.squeeze())
+        out = error.sum()/self.k
         
-        return l2_norm
+        return out
 
 class FunctionsBaseMetric(CurveLayer):
     def __init__(self, N):
@@ -190,7 +190,8 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
     loss_func = FunctionDistance(q1, q2, k=n_domain, sample_type=domain_type)
 
     best_error_value = np.inf
-    for _ in range(kwargs.get("n_restarts", 50)):
+    n_restarts = kwargs.get("n_restarts", 50)
+    for i in range(n_restarts):
         basis_type = kwargs.get("basis_type", "palais")
         n_basis = kwargs.get("n_basis", 20)
         if basis_type=="sine":
@@ -205,9 +206,12 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
         # Create reparametrization network
         RN = CurveReparametrizer([basis for _ in range(kwargs.get("n_layers", 15))])
 
-        optimizer = optim.LBFGS(RN.parameters(), 
-                                lr=kwargs.get("lr", 1e-1), 
-                                max_iter=kwargs.get("n_iters", 100), 
+        n_iters = kwargs.get("n_iters", 100)
+        optimizer = optim.LBFGS(RN.parameters(),
+                                lr = kwargs.get("lr", 1e-1),
+                                max_iter = n_iters,
+                                max_eval = 3 * n_iters,
+                                history_size = n_iters,
                                 line_search_fn="strong_wolfe"
                             )
         error = reparametrize(RN, 
@@ -222,7 +226,7 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
             best_error_value = best_error[-1]
             best_RN = RN
             if kwargs.get("verbose", False):
-                print("Current best error : %2.4f"%best_error_value)
+                print("Current best error : %.2e at iteration %d of %d"%(best_error_value,i+1, n_restarts), end='\r')
 
         if best_error_value<kwargs.get("eps", 1e-2):
             if kwargs.get("verbose", False):
