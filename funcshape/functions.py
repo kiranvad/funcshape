@@ -217,7 +217,7 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
         error = reparametrize(RN, 
                               loss_func, 
                               optimizer, 
-                              kwargs.get("n_iters", 100), 
+                              n_iters, 
                               Logger(0)
                             )
 
@@ -230,8 +230,12 @@ def get_warping_function(f1 : Function, f2 : Function, **kwargs)->Tuple[Function
 
         if best_error_value<kwargs.get("eps", 1e-2):
             if kwargs.get("verbose", False):
+                print()
                 print("Error threhsold reached")
             break
+
+    if kwargs.get("verbose", False):
+        print("Final best error : %.2e" % best_error_value)
 
     # Get plot data to visualize diffeomorphism
     with torch.no_grad():
