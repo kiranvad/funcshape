@@ -48,7 +48,7 @@ class ShapeDistanceBase(ABC):
                 )
 
         loss = self.loss_func(U, Y)
-        self.loss = float(loss)
+        self.loss = loss.item()
         return loss
 
 

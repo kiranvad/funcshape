@@ -19,11 +19,9 @@ def inverse_srvt(q):
 
     return inv
 
-
 def srvt_interpolate(q, r, t):
     new_q = interpolate(q, r, t)
     return inverse_srvt(new_q)
-
 
 def geodesic(q, r, steps):
     t = np.linspace(0, 1, steps)
