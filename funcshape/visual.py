@@ -116,6 +116,8 @@ def plot_surface(
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection="3d")
+    else:
+        fig = plt.gcf()
 
     coloring = get_plot_data(lambda x: f.volume_factor(x, h=1e-3), k=k).squeeze()
     if colornorm is None:
@@ -128,6 +130,13 @@ def plot_surface(
     ax.plot_surface(
         *Z, shade=False, facecolors=colormap(colors), rstride=1, cstride=1, **kwargs
     )
+    if kwargs.pop("add_colorbar", False):
+        # Create a mappable for the colorbar
+        mappable = plt.cm.ScalarMappable(cmap=colormap)
+        mappable.set_array(colors)  # tells colorbar which values to map
+
+        # Add colorbar
+        fig.colorbar(mappable, ax=ax, shrink=0.5, aspect=10, label='Curvature', pad=0.15)
     ax.view_init(*camera)
     return ax
 

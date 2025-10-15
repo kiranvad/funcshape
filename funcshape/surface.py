@@ -197,8 +197,8 @@ class PointCloudSurface(Surface):
         # Pass callable mapping into Surface base class
         super().__init__(
             (
-                lambda x: x[...,0],
-                lambda x: x[...,1],
+                lambda x: torch.tensor(self.pipeline.x_scaler.inverse_transform(x.detach().cpu().numpy())[...,0], dtype=torch.float32),
+                lambda x: torch.tensor(self.pipeline.x_scaler.inverse_transform(x.detach().cpu().numpy())[...,1], dtype=torch.float32),
                 lambda x: torch.tensor(self.pipeline.predict(x.detach().cpu().numpy())[0], dtype=torch.float32)
             )
         )
