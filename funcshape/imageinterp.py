@@ -3,7 +3,6 @@ import numpy as np
 import torch.nn as nn
 from funcshape.surface import Surface
 
-
 class ImageInterpolator:
     def __init__(self, img, mode="bilinear", **kwargs):
         """Assumes img of shape (C, H, W)"""

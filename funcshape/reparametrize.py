@@ -41,7 +41,6 @@ def reparametrize(
     logger.stop()
     return error
 
-
 def reparametrize_lbfgs(
     network, loss, optimizer, iterations, logger, scheduler=None, projection_kwargs=None
 ):
@@ -61,7 +60,7 @@ def reparametrize_lbfgs(
 
     def closure():
         global error
-        global func_evals
+        global func_evals 
 
         # Only log error after finishing line search
         if optimizer.state[optimizer._params[0]]["func_evals"] > func_evals:

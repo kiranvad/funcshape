@@ -1,5 +1,6 @@
 import torch
-
+from scipy.interpolate import interp1d
+import numpy as np
 from typing import Callable
 
 from funcshape.derivatives import central_differences
@@ -58,3 +59,52 @@ class ComposedCurve(Curve):
     @property
     def dim(self):
         return self.c.dim
+
+class ParametricCurve(Curve):
+    """
+    Generic parametric curve.
+    Takes evaluated points as input and returns a callable parametric curve.
+    """
+    def __init__(self, points: np.ndarray):
+        """
+        points: Tensor of shape (N, D) where D is the dimension (e.g., 2 for 2D, 3 for 3D)
+        """
+        assert points.ndim == 2, "points must be a 2D tensor of shape (N, D)"
+        self.points = points
+        self.N, self.D = points.shape
+
+        # Parameterization: t in [0,1]
+        self.t_values = torch.linspace(0, 1, self.N)
+
+        # Create an interpolation function for each dimension
+        self.interpolators = {}
+        t_np = self.t_values.numpy()
+        coords = ["x", "y"]
+        for d in range(self.D):
+            self.interpolators[coords[d]] = interp1d(
+                t_np, 
+                points[:, d], 
+                kind='cubic', 
+                fill_value="extrapolate"
+            )
+        
+        def xfun(t):
+            t_np = t.detach().cpu().numpy() if isinstance(t, torch.Tensor) else np.array(t)
+            return (torch.tensor(self.interpolators["x"](t_np), dtype=torch.float32))
+
+        def yfun(t):
+            t_np = t.detach().cpu().numpy() if isinstance(t, torch.Tensor) else np.array(t)
+            return (torch.tensor(self.interpolators["y"](t_np), dtype=torch.float32))
+
+        super().__init__((xfun, yfun))
+
+    def derivative(self, t, h=1e-5):
+        """
+        Numerical derivative using central differences
+        """
+        t = torch.tensor(t, dtype=torch.float32) if not isinstance(t, torch.Tensor) else t
+        t_plus = t + h
+        t_minus = t - h
+        f_plus = self(t_plus)
+        f_minus = self(t_minus)
+        return (f_plus - f_minus) / (2 * h)

@@ -9,7 +9,7 @@ class Qmap1D:
     def __init__(self, curve):
         self.c = curve
 
-    def __call__(self, X, h):
+    def __call__(self, X, h=1e-5):
         Q = torch.sqrt(self.c.derivative(X, h=h).norm(dim=-1, keepdim=True)) * self.c(X)
         return Q
 
@@ -21,7 +21,7 @@ class SRVT:
         super().__init__()
         self.c = curve
 
-    def __call__(self, X, h):
+    def __call__(self, X, h=1e-5):
         u = self.c.derivative(X, h=h).norm(dim=-1, keepdim=True)
         return torch.where(
             torch.abs(u) < 1e-7,
@@ -44,7 +44,7 @@ class Qmap2D:
     def __init__(self, surface):
         self.s = surface
 
-    def __call__(self, X, h):
+    def __call__(self, X, h=1e-5):
         return torch.sqrt(self.s.volume_factor(X, h)) * self.s(X)
 
 
@@ -52,7 +52,7 @@ class SRNF:
     def __init__(self, surface):
         self.s = surface
 
-    def __call__(self, X, h):
+    def __call__(self, X, h=1e-5):
         n = self.s.normal_vector(X, h)
         u = torch.norm(n, dim=-1, keepdim=True)
         return torch.where(
